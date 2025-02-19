@@ -139,7 +139,7 @@ def send_vacancies_to_telegram(vacancies):
         bot.send_message(chat_id, vacancy_message, disable_notification=(8 <= current_hour < 19))
 
     # Проверяем, если пользователь онлайн до 19:00 — отправляем напоминание (1 раз)
-    if (8 <= current_hour < 19) and not reminder_sent and is_user_online():
+    if (12 <= current_hour < 19) and not reminder_sent and is_user_online():
         bot.send_message(chat_id, "Ты появился онлайн! Не забудь проверить вакансии 😉")
         reminder_sent = True
 
