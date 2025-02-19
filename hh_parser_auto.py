@@ -5,6 +5,7 @@ import time
 from bs4 import BeautifulSoup
 import telebot
 
+moscow_tz = pytz.timezone('Europe/Moscow')
 # ------------------------- Настройки -------------------------
 # Список обязательных и исключаемых ключевых слов для вакансий
 include_keywords = []
@@ -127,7 +128,6 @@ def parse_vacancies():
 def send_vacancies_to_telegram(vacancies):
     global reminder_sent
     chat_id = "493952412"  # Укажи свой chat_id
-    moscow_tz = pytz.timezone('Europe/Moscow')
     current_hour = datetime.now(moscow_tz).hour
 
     for vac in vacancies:
