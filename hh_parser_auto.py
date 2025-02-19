@@ -146,6 +146,6 @@ if __name__ == "__main__":
             vacancies = parse_vacancies()
             print(f"Найдено {len(vacancies)} вакансий")
             if vacancies:  # Проверка, что вакансии найдены
-                send_vacancies_to_telegram(vacancies[:10])  # Отправляем только первые 10 вакансий
+                send_vacancies_to_telegram(vacancies[:30])  # Отправляем только первые 10 вакансий
 
         time.sleep(60)  # Пауза на 1 минуту
