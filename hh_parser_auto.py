@@ -35,6 +35,14 @@ bot = telebot.TeleBot(TOKEN)
 
 # ------------------------- Логика -------------------------
 
+# Функция для проверки, онлайн ли пользователь в Telegram
+def is_user_online():
+    """Проверяет, онлайн ли пользователь."""
+    url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={CHAT_ID}&user_id={CHAT_ID}"
+    response = requests.get(url).json()
+    status = response.get("result", {}).get("status", "")
+    return status in ["online", "recently"]
+
 # Функция для парсинга вакансий
 def parse_vacancies():
     url = "https://api.hh.ru/vacancies"
@@ -117,35 +125,46 @@ def parse_vacancies():
 
 # Функция для отправки вакансий в Telegram
 def send_vacancies_to_telegram(vacancies):
+    global reminder_sent
     chat_id = "493952412"  # Укажи свой chat_id
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    current_hour = datetime.now(moscow_tz).hour
+
     for vac in vacancies:
         vacancy_message = (
             f"Ссылка на вакансию: {vac['url']}\n"
             f"Зарплата: {vac['salary']}\n"
-            # f"Описание: {vac['description']}\n" пока убрал, заеб
-            f"Сопроводительное письмо: {'нужно' if any(kw in vac['description'].lower() for kw in ['сопроводительное письмо', 'сопроводительном письме', 'письмо', 'письме']) else 'не нужно'}"
+            f"Сопроводительное письмо: {'нужно' if any(kw in vac['description'].lower() for kw in ['сопроводительное письмо', 'мотивационное письмо', 'прикрепите письмо']) else 'не нужно'}"
         )
-        bot.send_message(chat_id, vacancy_message)
+        bot.send_message(chat_id, vacancy_message, disable_notification=(8 <= current_hour < 19))
+
+    # Проверяем, если пользователь онлайн до 19:00 — отправляем напоминание (1 раз)
+    if (8 <= current_hour < 19) and not reminder_sent and is_user_online():
+        bot.send_message(chat_id, "Ты появился онлайн! Не забудь проверить вакансии 😉")
+        reminder_sent = True
+
+# Сброс флага в 19:00
+def reset_reminder():
+    global reminder_sent
+    if datetime.now(moscow_tz).hour == 19:
+        reminder_sent = False
 
 # ------------------------- Время и выполнение -------------------------
-
-# Московское время
-moscow_tz = pytz.timezone('Europe/Moscow')
 
 # Список времени для отправки сообщений
 send_times = [8, 15, 22]  # 8:00, 15:00, 22:00
 
 if __name__ == "__main__":
     while True:
-        # Получаем текущее время по МСК
         current_time = datetime.now(moscow_tz)
 
-        # Проверяем, что текущее время совпадает с одним из запланированных
+        # Получаем текущее время по МСК и проверяем, что оно совпадает с одним из запланированных
         if current_time.hour in send_times and current_time.minute == 0:
             print(f"Время отправки вакансий ({current_time.hour}:00). Парсим вакансии...")
             vacancies = parse_vacancies()
             print(f"Найдено {len(vacancies)} вакансий")
             if vacancies:  # Проверка, что вакансии найдены
-                send_vacancies_to_telegram(vacancies[:30])  # Отправляем только первые 10 вакансий
+                send_vacancies_to_telegram(vacancies[:30])  # Отправляем только первые 30 вакансий
 
+        reset_reminder()
         time.sleep(60)  # Пауза на 1 минуту
