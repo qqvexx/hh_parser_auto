@@ -3,6 +3,7 @@ name: Run Python script
 on:
   schedule:
     - cron: '0 15-22 * * *'  # запуск каждый час с 12:00 до 19:00 по МСК (с учетом UTC+3)
+    - cron: '0 22 * * *'      # запуск в 01:00 по МСК (UTC+3), то есть 22:00 по UTC
   workflow_dispatch:  # Позволяет запускать вручную
 
 jobs:
