@@ -122,8 +122,8 @@ def send_vacancies_to_telegram(vacancies):
         vacancy_message = (
             f"Ссылка на вакансию: {vac['url']}\n"
             f"Зарплата: {vac['salary']}\n"
-            f"Описание: {vac['description']}\n"
-            f"Сопроводительное письмо: {'нужно' if 'сопроводительное письмо' in vac['description'].lower() else 'не нужно'}"
+            # f"Описание: {vac['description']}\n" пока убрал, заеб
+            f"Сопроводительное письмо: {'нужно' if any(kw in vac['description'].lower() for kw in ['сопроводительное письмо', 'сопроводительном письме', 'письмо', 'письме']) else 'не нужно'}"
         )
         bot.send_message(chat_id, vacancy_message)
 
