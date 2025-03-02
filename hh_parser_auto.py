@@ -4,53 +4,61 @@ import pytz
 import time
 from bs4 import BeautifulSoup
 import telebot
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 
 moscow_tz = pytz.timezone('Europe/Moscow')
-# ------------------------- Настройки -------------------------
-# Список обязательных и исключаемых ключевых слов для вакансий
-include_keywords = []
-exclude_keywords = ["Junior", "стажировка", "тестовое задание", "гибридный", "офисный", 
-                    "высшее", "Крутейший вайб+", "gamedev", "геймдев", "игры", "автоматизированное", 
-                    "нагрузочное", "образование", "офис", "стажёр", "не it", "оффлайн", "office", 
-                    "автоматизации", "1С", "1C"]
 
-# Поисковый запрос для вакансий
+# ------------------------- Настройки -------------------------
+include_keywords = []
+exclude_keywords = [
+    "Junior", "стажировка", "тестовое задание", "гибридный", "офисный",
+    "высшее", "Крутейший вайб+", "gamedev", "геймдев", "игры", "автоматизированное",
+    "нагрузочное", "образование", "офис", "стажёр", "не it", "оффлайн", "office",
+    "автоматизации", "1С", "1C"
+]
+
 search_text = "Тестировщик ПО"
 
-# Список слов, которые не должны встречаться в названии вакансии
-excluded_title_keywords = ["Стажер", "Нагрузочное", "Auto", "Автоматизированое", "Junior", 
-                            "стажёр", "техники", "не it", "в офисе", "не айти", "начинающий", 
-                            "office", "mobile", "автотестировщик", "AQA", "мобильное", "Яндекс", "1C", "1С", "мобильных"]
+excluded_title_keywords = [
+    "Стажер", "Нагрузочное", "Auto", "Автоматизированое", "Junior",
+    "стажёр", "техники", "не it", "в офисе", "не айти", "начинающий",
+    "office", "mobile", "автотестировщик", "AQA", "мобильное", "Яндекс", "1C", "1С", "мобильных"
+]
 
-# Параметры для поиска вакансий
 search_params = {
-    "area": 1  # Пример для поиска в Москве
+    "area": 1  # Поиск в Москве
 }
 
-# Максимальное количество вакансий для сохранения
 max_vacancies = 50
 
-# Токен для Telegram бота
 TOKEN = "7529463228:AAGgqXhXYEfcEA8B-8Dffs7H3nZdvAk1i5g"
 bot = telebot.TeleBot(TOKEN)
 
-# ------------------------- Логика -------------------------
+reminder_sent = False  # Флаг для отправки напоминания
 
-# Функция для проверки, онлайн ли пользователь в Telegram
+# ------------------------- Функции -------------------------
+
 def is_user_online():
-    """Проверяет, онлайн ли пользователь."""
-    url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={CHAT_ID}&user_id={CHAT_ID}"
-    response = requests.get(url).json()
-    status = response.get("result", {}).get("status", "")
-    return status in ["online", "recently"]
+    """Проверяет, онлайн ли пользователь в Telegram."""
+    chat_id = "493952412"  # Укажите правильный chat_id
+    url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={chat_id}&user_id={chat_id}"
+    try:
+        response = requests.get(url).json()
+        status = response.get("result", {}).get("status", "")
+        return status in ["online", "recently"]
+    except Exception as e:
+        logging.error(f"Ошибка проверки статуса пользователя: {e}")
+        return False
 
-# Функция для парсинга вакансий
 def parse_vacancies():
+    logging.info("Начало парсинга вакансий...")
     url = "https://api.hh.ru/vacancies"
     headers = {
         "HH-User-Agent": "Mozilla/5.0 (qqqvexx@vk.com)"
     }
-
     vacancies_found = []
     page = 0
 
@@ -61,10 +69,11 @@ def parse_vacancies():
             "per_page": 20
         }
         params.update(search_params)
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code != 200:
-            print(f"Ошибка запроса: {response.status_code}")
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Ошибка запроса: {e}")
             break
 
         data = response.json()
@@ -78,13 +87,16 @@ def parse_vacancies():
 
             vacancy_id = item.get("id")
             vacancy_detail_url = f"https://api.hh.ru/vacancies/{vacancy_id}"
-            detail_response = requests.get(vacancy_detail_url, headers=headers)
-            if detail_response.status_code != 200:
+            try:
+                detail_response = requests.get(vacancy_detail_url, headers=headers)
+                detail_response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Ошибка запроса деталей вакансии {vacancy_id}: {e}")
                 continue
 
             vacancy_data = detail_response.json()
             title = vacancy_data.get("name", "")
-            if any(excluded.lower() in title.lower() for excluded in excluded_title_keywords):
+            if any(ex_kw.lower() in title.lower() for ex_kw in excluded_title_keywords):
                 continue
 
             description_html = vacancy_data.get("description", "")
@@ -120,15 +132,14 @@ def parse_vacancies():
             break
         page += 1
 
-    vacancies_found.sort(key=lambda x: x.get("salary_from", -1), reverse=True)
-
+    logging.info(f"Парсинг завершён. Найдено {len(vacancies_found)} вакансий.")
     return vacancies_found
 
-# Функция для отправки вакансий в Telegram
 def send_vacancies_to_telegram(vacancies):
     global reminder_sent
-    chat_id = "493952412"  # Укажи свой chat_id
-    current_hour = datetime.now(moscow_tz).hour
+    chat_id = "493952412"  # Укажите правильный chat_id
+    current_time = datetime.now(pytz.UTC).astimezone(moscow_tz)
+    current_hour = current_time.hour
 
     for vac in vacancies:
         vacancy_message = (
@@ -136,35 +147,34 @@ def send_vacancies_to_telegram(vacancies):
             f"Зарплата: {vac['salary']}\n"
             f"Сопроводительное письмо: {'нужно' if any(kw in vac['description'].lower() for kw in ['сопроводительное письмо', 'мотивационное письмо', 'прикрепите письмо']) else 'не нужно'}"
         )
-        bot.send_message(chat_id, vacancy_message, disable_notification=(8 <= current_hour < 19))
+        try:
+            bot.send_message(chat_id, vacancy_message, disable_notification=(8 <= current_hour < 19))
+        except Exception as e:
+            logging.error(f"Ошибка отправки сообщения для вакансии {vac['id']}: {e}")
 
-    # Проверяем, если пользователь онлайн до 19:00 — отправляем напоминание (1 раз)
+    # Если пользователь онлайн и время между 12 и 19, отправляем напоминание (один раз)
     if (12 <= current_hour < 19) and not reminder_sent and is_user_online():
-        bot.send_message(chat_id, "Ты появился онлайн! Не забудь проверить вакансии 😉")
-        reminder_sent = True
+        try:
+            bot.send_message(chat_id, "Ты появился онлайн! Не забудь проверить вакансии 😉")
+            reminder_sent = True
+        except Exception as e:
+            logging.error(f"Ошибка отправки напоминания: {e}")
 
-# Сброс флага в 19:00
 def reset_reminder():
     global reminder_sent
-    if datetime.now(moscow_tz).hour == 19:
+    current_time = datetime.now(pytz.UTC).astimezone(moscow_tz)
+    if current_time.hour == 19:
         reminder_sent = False
 
-# ------------------------- Время и выполнение -------------------------
-
-# Список времени для отправки сообщений
-send_times = [1, 8, 15, 22]  # 8:00, 15:00, 22:00
-
+# ------------------------- Основной цикл -------------------------
 if __name__ == "__main__":
+    send_times = [1, 8, 15, 22]  # Часы запуска (по МСК)
     while True:
-        current_time = datetime.now(moscow_tz)
-
-        # Получаем текущее время по МСК и проверяем, что оно совпадает с одним из запланированных
+        current_time = datetime.now(pytz.UTC).astimezone(moscow_tz)
         if current_time.hour in send_times and current_time.minute == 0:
-            print(f"Время отправки вакансий ({current_time.hour}:00). Парсим вакансии...")
+            logging.info(f"Время отправки вакансий ({current_time.hour}:00). Парсим вакансии...")
             vacancies = parse_vacancies()
-            print(f"Найдено {len(vacancies)} вакансий")
-            if vacancies:  # Проверка, что вакансии найдены
+            if vacancies:
                 send_vacancies_to_telegram(vacancies[:30])  # Отправляем только первые 30 вакансий
-
         reset_reminder()
-        time.sleep(60)  # Пауза на 1 минуту
+        time.sleep(60)
