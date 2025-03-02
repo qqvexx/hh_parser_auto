@@ -2,13 +2,17 @@ name: Run Python script
 
 on:
   schedule:
-    - cron: '0 15-22 * * *'  # запуск каждый час с 12:00 до 19:00 по МСК (с учетом UTC+3)
-    - cron: '0 22 * * *'      # запуск в 01:00 по МСК (UTC+3), то есть 22:00 по UTC
+    # Запуск каждый час с 12:00 до 19:00 по МСК.
+    # Так как GitHub Actions использует UTC, сдвигаем на -3 часа: 12:00 МСК = 9:00 UTC, 19:00 МСК = 16:00 UTC.
+    - cron: '0 9-16 * * *'
+    # Дополнительный запуск: в 01:00 по МСК (22:00 UTC)
+    - cron: '0 19 * * *'
   workflow_dispatch:  # Позволяет запускать вручную
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Увеличенный таймаут для выполнения задачи
 
     steps:
       - name: Checkout code
